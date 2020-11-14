@@ -175,8 +175,6 @@ baselearner_best_auc_test <- max(h2o.auc(perf_gbm_test), h2o.auc(perf_rf_test))
 ensemble_auc_test <- h2o.auc(perf)
 print(sprintf("Best Base-learner Test AUC:  %s", baselearner_best_auc_test))
 print(sprintf("Ensemble Test AUC:  %s", ensemble_auc_test))
-# [1] "Best Base-learner Test AUC:  0.76979821502548"
-# [1] "Ensemble Test AUC:  0.773501212640419"
 
 # Generate predictions on a test set (if neccessary)
 pred <- h2o.predict(ensemble, newdata = holdout)
@@ -186,7 +184,7 @@ pred <- h2o.predict(ensemble, newdata = holdout)
 # 2. Generate a random grid of models and stack them together
 
 # GBM Hyperparamters
-learn_rate_opt <- c(0.01, 0.03)
+learn_rate_opt <- c(0.01, 0.03, 0.07, 0.1, 0.2, 0.3)
 max_depth_opt <- c(3, 4, 5, 6, 9)
 sample_rate_opt <- c(0.7, 0.8, 0.9, 1.0)
 col_sample_rate_opt <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8)
@@ -227,10 +225,11 @@ baselearner_best_auc_test <- max(baselearner_aucs)
 ensemble_auc_test <- h2o.auc(perf)
 print(sprintf("Best Base-learner Test AUC:  %s", baselearner_best_auc_test))
 print(sprintf("Ensemble Test AUC:  %s", ensemble_auc_test))
-# [1] "Best Base-learner Test AUC:  0.748146530400473"
-# [1] "Ensemble Test AUC:  0.773501212640419"
 
 # Generate predictions on a test set (if neccessary)
 pred <- h2o.predict(ensemble, newdata = test)
 ```
+
+
+# Variable Importance Plots
 
