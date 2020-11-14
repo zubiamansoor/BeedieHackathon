@@ -194,7 +194,7 @@ hyper_params <- list(learn_rate = learn_rate_opt,
                      col_sample_rate = col_sample_rate_opt)
 
 search_criteria <- list(strategy = "RandomDiscrete",
-                        max_models = 3,
+                        max_models = 30,
                         seed = 1)
 
 gbm_grid <- h2o.grid(algorithm = "gbm",
@@ -202,7 +202,7 @@ gbm_grid <- h2o.grid(algorithm = "gbm",
                      x = x,
                      y = y,
                      training_frame = train,
-                     ntrees = 10,
+                     ntrees = 100,
                      seed = 1,
                      nfolds = nfolds,
                      keep_cross_validation_predictions = TRUE,
@@ -232,4 +232,7 @@ pred <- h2o.predict(ensemble, newdata = test)
 
 
 # Variable Importance Plots
+```{r}
+
+```
 
