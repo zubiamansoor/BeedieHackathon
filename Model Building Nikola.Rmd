@@ -11,7 +11,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Import Data
 ```{r}
-
+mg <- read.csv(file="MG_DATASET_ST.csv", header=TRUE)
+fsa <- read.csv(file="FSA_DATASET_ST.csv", header=TRUE)
+cust <- read.csv(file="CUST_DATASET_ST.csv", header=TRUE)
 ```
 
 
