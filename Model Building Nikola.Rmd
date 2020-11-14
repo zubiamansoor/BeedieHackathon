@@ -94,8 +94,9 @@ load("mg_clean.rds")
 ```
 
 ```{r}
-mg.0 <- mg[mg$Sample %in% c("Estimation", "Validation"), ]
-mg.1 <- mg[mg$Sample %in% c("Holdout"), ]
+mg.0 <- mg[mg$Sample %in% c("Estimation"), ]
+mg.1 <- mg[mg$Sample %in% c("Validation"), ]
+mg.2 <- mg[mg$Sample %in% c("Holdout"), ]
 ```
 
 
@@ -110,6 +111,7 @@ h2o.init()
 # Import a sample binary outcome train/test set into H2O
 train <- as.h2o(mg.0)
 test <- as.h2o(mg.1)
+holdout <- as.h2o(mg.2)
 
 # Identify predictors and response
 y <- "default"
@@ -151,7 +153,7 @@ my_gbm <- h2o.gbm(x = x,
 my_rf <- h2o.randomForest(x = x,
                           y = y,
                           training_frame = train,
-                          ntrees = 50,
+                          ntrees = 500,
                           nfolds = nfolds,
                           keep_cross_validation_predictions = TRUE,
                           seed = 1)
@@ -163,6 +165,7 @@ ensemble <- h2o.stackedEnsemble(x = x,
                                 base_models = list(my_gbm, my_rf))
 
 # Eval ensemble performance on a test set
+# summary(ensemble)
 perf <- h2o.performance(ensemble, newdata = test)
 
 # Compare to base learner performance on the test set
@@ -176,7 +179,7 @@ print(sprintf("Ensemble Test AUC:  %s", ensemble_auc_test))
 # [1] "Ensemble Test AUC:  0.773501212640419"
 
 # Generate predictions on a test set (if neccessary)
-pred <- h2o.predict(ensemble, newdata = test)
+pred <- h2o.predict(ensemble, newdata = holdout)
 ```
 
 ```{r}
