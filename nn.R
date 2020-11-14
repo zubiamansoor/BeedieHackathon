@@ -26,6 +26,17 @@ pred.test <- predict(nn.model, newdata = test, type = "prob")[2]
 
 confusionMatrix(pred, val$default)
 result = cbind(mg_acc = mg[mg$Sample == "Holdout", 1], score = pred.test)
+library(pROC)
+probsTrain <- predict(nn.model, newdata = val, type = "prob")
+rocCurve   <- roc(response = val$default,
+                  predictor = probsTrain[, 2],
+                  levels = rev(levels(val$default)))
+plot(rocCurve, print.thres = "best", main = "ROC Curve")
 
+### THRESHOLD IS 0.4
+
+pred.thre <- ifelse(probsTrain > 0.4, 1, 0)[,2]
+
+confusionMatrix(as.factor(pred.thre), val$default)
 
 write.csv(result, "result.csv")
