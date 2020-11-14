@@ -7,6 +7,8 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+overwrite <- TRUE
+rm(list=ls())
 ```
 
 # Import Data
@@ -17,5 +19,81 @@ cust <- read.csv(file="CUST_DATASET_ST.csv", header=TRUE)
 ```
 
 
-
 # Start Model Building
+
+```{r}
+mean(mg$default==1, na.rm=TRUE) # Data undersamples non-default!
+```
+
+```{r, eval=FALSE}
+# Create variables
+mg$LVR <- mg$loan_size / mg$purchase_price
+mg$cs_avg <- NA
+mg$cs_min <- NA
+mg$cs_max <- NA
+
+mg$income_avg <- NA
+mg$income_min <- NA
+mg$income_max <- NA
+
+mg$property_type <- as.factor(mg$property_type)
+mg$amort_period <- as.numeric(substr(mg$amort_period, start = 1, stop = 2))
+mg$origin_date <- as.Date(mg$origin_date)
+
+for (i in 1:nrow(mg)) {
+  ma_temp <- mg[i, "mg_acc"]
+  mg[i, "cs_avg"] <- mean(cust$cust_cr_score[which(cust$mg_acc == ma_temp)], na.rm=TRUE)
+  mg[i, "cs_min"] <- min(cust$cust_cr_score[which(cust$mg_acc == ma_temp)], na.rm=TRUE)
+  mg[i, "cs_max"] <- max(cust$cust_cr_score[which(cust$mg_acc == ma_temp)], na.rm=TRUE)
+  
+  mg[i, "income_avg"] <- mean(cust$cust_income[which(cust$mg_acc == ma_temp)], na.rm=TRUE)
+  mg[i, "income_min"] <- min(cust$cust_income[which(cust$mg_acc == ma_temp)], na.rm=TRUE)
+  mg[i, "income_max"] <- max(cust$cust_income[which(cust$mg_acc == ma_temp)], na.rm=TRUE)
+}
+
+mg$cs_avg[is.na(mg$cs_avg > 0)] <- NA
+mg$cs_min[is.na(mg$cs_avg > 0)] <- NA
+mg$cs_max[is.na(mg$cs_avg > 0)] <- NA
+
+mg$income_avg[is.na(mg$income_avg > 0)] <- NA
+mg$income_min[is.na(mg$income_avg > 0)] <- NA
+mg$income_max[is.na(mg$income_avg > 0)] <- NA
+```
+
+```{r}
+# Function that allows me to save files "safely": modified from 
+# https://stackoverflow.com/questions/1541679/preventing-overwriting-of-files-when-using-save-or-save-image
+SafeSave <- function( ..., file=stop("'file' must be specified"), overwrite=FALSE, save.fun=save) {
+  if ( file.exists(file) & !overwrite ) {
+    warning("'file' already exists. Won't overwrite.")
+  } else {
+    save.fun(..., file=file)
+  }
+}
+
+```
+
+```{r, eval=FALSE}
+# Impute missing data
+mg$cs_avg[is.na(mg$cs_avg)] <- mean(mg$cs_avg, na.rm=TRUE)
+mg$cs_min[is.na(mg$cs_min)] <- mean(mg$cs_min, na.rm=TRUE)
+mg$cs_max[is.na(mg$cs_max)] <- mean(mg$cs_max, na.rm=TRUE)
+
+mg$income_avg[is.na(mg$income_avg)] <- mean(mg$income_avg, na.rm=TRUE)
+mg$income_min[is.na(mg$income_min)] <- mean(mg$income_min, na.rm=TRUE)
+mg$income_max[is.na(mg$income_max)] <- mean(mg$income_max, na.rm=TRUE)
+```
+
+
+```{r, eval=FALSE}
+SafeSave(mg, file="mg_clean.rds", overwrite=overwrite)
+```
+
+```{r}
+load("mg_clean.rds")
+```
+
+```{r}
+mg.0 <- mg[mg$Sample %in% c("Estimation", "Validation"), ]
+mg.1 <- mg[mg$Sample %in% c("Holdout"), ]
+```
