@@ -178,6 +178,7 @@ print(sprintf("Ensemble Test AUC:  %s", ensemble_auc_test))
 
 # Generate predictions on a test set (if neccessary)
 pred <- h2o.predict(ensemble, newdata = holdout)
+pred <- h2o.predict(ensemble, newdata = test)
 ```
 
 ```{r}
@@ -231,8 +232,65 @@ pred <- h2o.predict(ensemble, newdata = test)
 ```
 
 
-# Variable Importance Plots
+# Cluster Analysis
 ```{r}
+fsa.num <- fsa[,-1]
 
+library(factoextra)
+# fviz_nbclust(fsa.num, FUNcluster=kmeans) 
+
+
+fsa.clust <- kmeans(fsa.num, centers=10, iter.max = 10, nstart = 50)
+```
+
+```{r}
+fsa$cluster <- fsa.clust$cluster
+```
+
+```{r}
+plot(x=fsa$famincome2018median, y=fsa$Median_price_apart, col=fsa$cluster)
+plot(x=fsa$famincome2018median, y=fsa$fam2018, col=fsa$cluster)
+```
+
+```{r}
+fsa$cluster <- as.factor(fsa$cluster)
+fsa$Cluster <- fsa$cluster
+
+library(ggplot2)
+ggplot(fsa, aes(x=famincome2018median, y=Median_price_apart, col=Cluster, label=FSA)) +
+    xlab("Median Family Income (2018)") + ylab("Median Apartment Price (2018)") +
+  geom_text()
+
+ggplot(fsa, aes(x=famincome2018median, y=Median_price_apart, col=Cluster, label=FSA)) +
+    xlab("Median Family Income (2018)") + ylab("Median Apartment Price (2018)") +
+  geom_point(size=3, alpha=0.5)
+```
+
+
+
+
+
+
+```{r}
+mg$Cluster <- NA
+for (i in 1:nrow(mg)) {
+  fsa_temp <- mg[i, "FSA"]
+  mg$Cluster[i] <- fsa$Cluster[which(fsa$FSA == fsa_temp)]
+}
+```
+
+```{r}
+# pred <- h2o.predict(ensemble, newdata = train)
+
+```
+
+```{r}
+mg.1$pred <- as.numeric(as.data.frame(pred[[3]])[,1])
+
+library(dplyr)
+mg.1 %>% group_by(Cluster) %>%
+  summarize(Mean=mean(pred))
+
+0.382 / 0.153
 ```
 
