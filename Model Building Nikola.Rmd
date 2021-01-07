@@ -1,0 +1,296 @@
+---
+title: "Model Building Nikola"
+author: "Nikola Surjanovic"
+date: "November 14, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+overwrite <- TRUE
+rm(list=ls())
+```
+
+# Import Data
+```{r}
+mg <- read.csv(file="MG_DATASET_ST.csv", header=TRUE)
+fsa <- read.csv(file="FSA_DATASET_ST.csv", header=TRUE)
+cust <- read.csv(file="CUST_DATASET_ST.csv", header=TRUE)
+```
+
+
+# Data Processing
+
+```{r}
+mean(mg$default==1, na.rm=TRUE) # Data undersamples non-default!
+```
+
+```{r, eval=FALSE}
+# Create variables
+mg$LVR <- mg$loan_size / mg$purchase_price
+mg$cs_avg <- NA
+mg$cs_min <- NA
+mg$cs_max <- NA
+
+mg$income_avg <- NA
+mg$income_min <- NA
+mg$income_max <- NA
+
+mg$property_type <- as.factor(mg$property_type)
+mg$amort_period <- as.numeric(substr(mg$amort_period, start = 1, stop = 2))
+mg$origin_date <- as.Date(mg$origin_date)
+
+for (i in 1:nrow(mg)) {
+  ma_temp <- mg[i, "mg_acc"]
+  mg[i, "cs_avg"] <- mean(cust$cust_cr_score[which(cust$mg_acc == ma_temp)], na.rm=TRUE)
+  mg[i, "cs_min"] <- min(cust$cust_cr_score[which(cust$mg_acc == ma_temp)], na.rm=TRUE)
+  mg[i, "cs_max"] <- max(cust$cust_cr_score[which(cust$mg_acc == ma_temp)], na.rm=TRUE)
+  
+  mg[i, "income_avg"] <- mean(cust$cust_income[which(cust$mg_acc == ma_temp)], na.rm=TRUE)
+  mg[i, "income_min"] <- min(cust$cust_income[which(cust$mg_acc == ma_temp)], na.rm=TRUE)
+  mg[i, "income_max"] <- max(cust$cust_income[which(cust$mg_acc == ma_temp)], na.rm=TRUE)
+}
+
+mg$cs_avg[is.na(mg$cs_avg > 0)] <- NA
+mg$cs_min[is.na(mg$cs_avg > 0)] <- NA
+mg$cs_max[is.na(mg$cs_avg > 0)] <- NA
+
+mg$income_avg[is.na(mg$income_avg > 0)] <- NA
+mg$income_min[is.na(mg$income_avg > 0)] <- NA
+mg$income_max[is.na(mg$income_avg > 0)] <- NA
+```
+
+```{r}
+# Function that allows me to save files "safely": modified from 
+# https://stackoverflow.com/questions/1541679/preventing-overwriting-of-files-when-using-save-or-save-image
+SafeSave <- function( ..., file=stop("'file' must be specified"), overwrite=FALSE, save.fun=save) {
+  if ( file.exists(file) & !overwrite ) {
+    warning("'file' already exists. Won't overwrite.")
+  } else {
+    save.fun(..., file=file)
+  }
+}
+
+```
+
+```{r, eval=FALSE}
+# Impute missing data
+mg$cs_avg[is.na(mg$cs_avg)] <- mean(mg$cs_avg, na.rm=TRUE)
+mg$cs_min[is.na(mg$cs_min)] <- mean(mg$cs_min, na.rm=TRUE)
+mg$cs_max[is.na(mg$cs_max)] <- mean(mg$cs_max, na.rm=TRUE)
+
+mg$income_avg[is.na(mg$income_avg)] <- mean(mg$income_avg, na.rm=TRUE)
+mg$income_min[is.na(mg$income_min)] <- mean(mg$income_min, na.rm=TRUE)
+mg$income_max[is.na(mg$income_max)] <- mean(mg$income_max, na.rm=TRUE)
+```
+
+
+```{r, eval=FALSE}
+SafeSave(mg, file="mg_clean.rds", overwrite=overwrite)
+```
+
+```{r}
+load("mg_clean.rds")
+```
+
+```{r}
+mg.0 <- mg[mg$Sample %in% c("Estimation"), ]
+mg.1 <- mg[mg$Sample %in% c("Validation"), ]
+mg.2 <- mg[mg$Sample %in% c("Holdout"), ]
+```
+
+
+
+# Start Model Building
+```{r}
+# Modified from: https://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/stacked-ensembles.html 
+
+library(h2o)
+h2o.init()
+
+# Import a sample binary outcome train/test set into H2O
+train <- as.h2o(mg.0)
+test <- as.h2o(mg.1)
+holdout <- as.h2o(mg.2)
+
+# Identify predictors and response
+y <- "default"
+x <- setdiff(names(train), c(y, "mg_acc","FSA","origin_date","Sample"))
+
+# For binary classification, response should be a factor
+train[, y] <- as.factor(train[, y])
+test[, y] <- as.factor(test[, y])
+
+# Number of CV folds (to generate level-one data for stacking)
+nfolds <- 5
+```
+
+```{r}
+# There are a few ways to assemble a list of models to stack toegether:
+# 1. Train individual models and put them in a list
+# 2. Train a grid of models
+# 3. Train several grids of models
+# Note: All base models must have the same cross-validation folds and
+# the cross-validated predicted values must be kept.
+
+
+# 1. Generate a 2-model ensemble (GBM + RF)
+
+# Train & Cross-validate a GBM
+my_gbm <- h2o.gbm(x = x,
+                  y = y,
+                  training_frame = train,
+                  distribution = "bernoulli",
+                  ntrees = 10,
+                  max_depth = 3,
+                  min_rows = 2,
+                  learn_rate = 0.2,
+                  nfolds = nfolds,
+                  keep_cross_validation_predictions = TRUE,
+                  seed = 1)
+
+# Train & Cross-validate a RF
+my_rf <- h2o.randomForest(x = x,
+                          y = y,
+                          training_frame = train,
+                          ntrees = 500,
+                          nfolds = nfolds,
+                          keep_cross_validation_predictions = TRUE,
+                          seed = 1)
+
+# Train a stacked ensemble using the GBM and RF above
+ensemble <- h2o.stackedEnsemble(x = x,
+                                y = y,
+                                training_frame = train,
+                                base_models = list(my_gbm, my_rf))
+
+# Eval ensemble performance on a test set
+# summary(ensemble)
+perf <- h2o.performance(ensemble, newdata = test)
+
+# Compare to base learner performance on the test set
+perf_gbm_test <- h2o.performance(my_gbm, newdata = test)
+perf_rf_test <- h2o.performance(my_rf, newdata = test)
+baselearner_best_auc_test <- max(h2o.auc(perf_gbm_test), h2o.auc(perf_rf_test))
+ensemble_auc_test <- h2o.auc(perf)
+print(sprintf("Best Base-learner Test AUC:  %s", baselearner_best_auc_test))
+print(sprintf("Ensemble Test AUC:  %s", ensemble_auc_test))
+
+# Generate predictions on a test set (if neccessary)
+pred <- h2o.predict(ensemble, newdata = holdout)
+pred <- h2o.predict(ensemble, newdata = test)
+```
+
+```{r}
+# 2. Generate a random grid of models and stack them together
+
+# GBM Hyperparamters
+learn_rate_opt <- c(0.01, 0.03, 0.07, 0.1, 0.2, 0.3)
+max_depth_opt <- c(3, 4, 5, 6, 9)
+sample_rate_opt <- c(0.7, 0.8, 0.9, 1.0)
+col_sample_rate_opt <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8)
+hyper_params <- list(learn_rate = learn_rate_opt,
+                     max_depth = max_depth_opt,
+                     sample_rate = sample_rate_opt,
+                     col_sample_rate = col_sample_rate_opt)
+
+search_criteria <- list(strategy = "RandomDiscrete",
+                        max_models = 30,
+                        seed = 1)
+
+gbm_grid <- h2o.grid(algorithm = "gbm",
+                     grid_id = "gbm_grid_binomial",
+                     x = x,
+                     y = y,
+                     training_frame = train,
+                     ntrees = 100,
+                     seed = 1,
+                     nfolds = nfolds,
+                     keep_cross_validation_predictions = TRUE,
+                     hyper_params = hyper_params,
+                     search_criteria = search_criteria)
+
+# Train a stacked ensemble using the GBM grid
+ensemble <- h2o.stackedEnsemble(x = x,
+                                y = y,
+                                training_frame = train,
+                                base_models = gbm_grid@model_ids)
+
+# Eval ensemble performance on a test set
+perf <- h2o.performance(ensemble, newdata = test)
+
+# Compare to base learner performance on the test set
+.getauc <- function(mm) h2o.auc(h2o.performance(h2o.getModel(mm), newdata = test))
+baselearner_aucs <- sapply(gbm_grid@model_ids, .getauc)
+baselearner_best_auc_test <- max(baselearner_aucs)
+ensemble_auc_test <- h2o.auc(perf)
+print(sprintf("Best Base-learner Test AUC:  %s", baselearner_best_auc_test))
+print(sprintf("Ensemble Test AUC:  %s", ensemble_auc_test))
+
+# Generate predictions on a test set (if neccessary)
+pred <- h2o.predict(ensemble, newdata = test)
+```
+
+
+# Cluster Analysis
+```{r}
+fsa.num <- fsa[,-1]
+
+library(factoextra)
+# fviz_nbclust(fsa.num, FUNcluster=kmeans) 
+
+
+fsa.clust <- kmeans(fsa.num, centers=10, iter.max = 10, nstart = 50)
+```
+
+```{r}
+fsa$cluster <- fsa.clust$cluster
+```
+
+```{r}
+plot(x=fsa$famincome2018median, y=fsa$Median_price_apart, col=fsa$cluster)
+plot(x=fsa$famincome2018median, y=fsa$fam2018, col=fsa$cluster)
+```
+
+```{r}
+fsa$cluster <- as.factor(fsa$cluster)
+fsa$Cluster <- fsa$cluster
+
+library(ggplot2)
+ggplot(fsa, aes(x=famincome2018median, y=Median_price_apart, col=Cluster, label=FSA)) +
+    xlab("Median Family Income (2018)") + ylab("Median Apartment Price (2018)") +
+  geom_text()
+
+ggplot(fsa, aes(x=famincome2018median, y=Median_price_apart, col=Cluster, label=FSA)) +
+    xlab("Median Family Income (2018)") + ylab("Median Apartment Price (2018)") +
+  geom_point(size=3, alpha=0.5)
+```
+
+
+
+
+
+
+```{r}
+mg$Cluster <- NA
+for (i in 1:nrow(mg)) {
+  fsa_temp <- mg[i, "FSA"]
+  mg$Cluster[i] <- fsa$Cluster[which(fsa$FSA == fsa_temp)]
+}
+```
+
+```{r}
+# pred <- h2o.predict(ensemble, newdata = train)
+
+```
+
+```{r}
+mg.1$pred <- as.numeric(as.data.frame(pred[[3]])[,1])
+
+library(dplyr)
+mg.1 %>% group_by(Cluster) %>%
+  summarize(Mean=mean(pred))
+
+0.382 / 0.153
+```
+
